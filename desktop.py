@@ -6,6 +6,7 @@ from pathlib import Path
 from tkinter import ttk, messagebox, filedialog, simpledialog
 from devices import DATA, PROFILES, settings, persist, save
 from engine import Engine
+from sdk_setup import setup, installed
 from bridge import launch, screenshot, package_id
 
 class Desktop:
@@ -39,22 +40,23 @@ class Desktop:
             for col,(label,fn) in enumerate(actions):
                 ttk.Button(panel,text=label,command=fn).grid(row=index,column=col,sticky="ew",padx=2,pady=3)
                 panel.columnconfigure(col,weight=1)
-        row(2,[("Utwórz urządzenie",lambda:self.session("create")),("Start",lambda:self.session("start")),
+        ttk.Button(panel, text="Skonfiguruj Android automatycznie", command=self.auto_setup).grid(row=2,column=0,columnspan=4,sticky="ew",pady=(4,9))
+        row(3,[("Utwórz urządzenie",lambda:self.session("create")),("Start",lambda:self.session("start")),
                ("Stop",lambda:self.session("stop")),("Status",self.refresh)])
-        row(3,[("Instaluj APK",self.install),("Uruchom aplikację",self.open_app),
+        row(4,[("Instaluj APK",self.install),("Uruchom aplikację",self.open_app),
                ("Home",lambda:self.key("3")),("Back",lambda:self.key("4"))])
-        row(4,[("Zrzut PNG",lambda:self.export(True)),("Logcat",lambda:self.export(False)),
+        row(5,[("Zrzut PNG",lambda:self.export(True)),("Logcat",lambda:self.export(False)),
                ("Domyślny launcher",lambda:self.android("shell","am","start","-a","android.settings.HOME_SETTINGS")),
                ("Ustawienia",self.preferences)])
         self.recent = ttk.Combobox(panel,values=self.config["recent"])
         self.recent.set(next(iter(self.config["recent"]), "dev.universalcarlauncher.app"))
-        self.recent.grid(row=5,column=0,columnspan=3,sticky="ew",pady=8)
-        ttk.Button(panel,text="Odinstaluj pakiet",command=self.remove).grid(row=5,column=3,sticky="ew")
+        self.recent.grid(row=6,column=0,columnspan=3,sticky="ew",pady=8)
+        ttk.Button(panel,text="Odinstaluj pakiet",command=self.remove).grid(row=6,column=3,sticky="ew")
         self.status = tk.StringVar(value="Wybierz profil, a następnie Start.")
-        tk.Label(panel,textvariable=self.status,bg="#15191f",fg="#90bdff",anchor="w").grid(row=6,column=0,columnspan=4,sticky="ew")
+        tk.Label(panel,textvariable=self.status,bg="#15191f",fg="#90bdff",anchor="w").grid(row=7,column=0,columnspan=4,sticky="ew")
         self.log = tk.Text(panel,height=9,bg="#101318",fg="#dee6ef",wrap="word",relief="flat",padx=10,pady=10)
-        self.log.grid(row=7,column=0,columnspan=4,sticky="nsew",pady=8)
-        panel.rowconfigure(7,weight=1)
+        self.log.grid(row=8,column=0,columnspan=4,sticky="nsew",pady=8)
+        panel.rowconfigure(8,weight=1)
         root.after(100,self.poll)
 
     def work(self, title, fn, done=None):
@@ -74,6 +76,10 @@ class Desktop:
     def poll(self):
         try:
             ok, result, done = self.events.get_nowait()
+            if ok is None:
+                self.log.insert("end", str(result) + "\n")
+                self.log.see("end")
+                return
             self.busy = False
             self.device.configure(state="readonly")
             self.status.set("Zakończono" if ok else "Błąd")
@@ -157,6 +163,22 @@ class Desktop:
                     save(Path(dest),call("logcat","-d","-t","2000","--pid="+pid))
                 return dest
             self.work("Zapisywanie",capture)
+
+    def auto_setup(self):
+        if self.busy:
+            return
+        sdk = self.config["sdk"]
+        if installed(sdk):
+            messagebox.showinfo("AEMULUS", "Android SDK jest juz skonfigurowany.")
+            return
+        if not messagebox.askyesno("AEMULUS - Android SDK",
+                "Program pobierze oficjalne komponenty Android SDK od Google. "
+                "Wymagane jest kilka GB wolnego miejsca. "
+                "Czy zapoznales sie z licencjami Android SDK i zgadzasz sie je zaakceptowac?"):
+            return
+        def report(message):
+            self.events.put((None, message, None))
+        self.work("Konfiguracja Android SDK", lambda: setup(sdk, report, accept_licenses=True))
 
     def preferences(self):
         if self.busy:
