@@ -79,6 +79,7 @@ class Desktop:
             if ok is None:
                 self.log.insert("end", str(result) + "\n")
                 self.log.see("end")
+                self.root.after(120,self.poll)
                 return
             self.busy = False
             self.device.configure(state="readonly")
